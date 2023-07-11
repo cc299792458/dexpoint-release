@@ -7,6 +7,7 @@ from dexpoint.utils.egad_object_utils import load_egad_object, EGAD_NAME
 from dexpoint.utils.render_scene_utils import set_entity_color
 from dexpoint.utils.shapenet_utils import load_shapenet_object, SHAPENET_CAT, CAT_DICT
 from dexpoint.utils.ycb_object_utils import load_ycb_object, YCB_SIZE, YCB_ORIENTATION
+from dexpoint.utils.primitive_object_utils import create_box, create_capsule
 
 
 class LabRelocateEnv(BaseSimulationEnv):
@@ -26,7 +27,7 @@ class LabRelocateEnv(BaseSimulationEnv):
 
         # Construct scene
         self.scene = self.engine.create_scene()
-        self.scene.set_timestep(0.005)
+        self.scene.set_timestep(1 / 200.0)  # 200Hz
 
         # Dummy camera creation to initial geometry object
         if self.renderer and not self.no_rgb:
@@ -36,11 +37,26 @@ class LabRelocateEnv(BaseSimulationEnv):
         # Load table
         self.tables = self.create_lab_tables(table_height=0.6)
 
+        # Load pan
+        self.pan = self.load_pan()
+
         # Load object
         self.manipulated_object, self.target_object, self.object_height = self.load_object(object_name)
 
     def load_object(self, object_name):
-        if self.object_category.lower() == "ycb":
+        if self.object_category.lower() == 'primitives':
+            if self.object_name == 'box':
+                half_size = [0.03, 0.03, 0.001]
+                manipulated_object = create_box(self.scene, half_size=half_size, color=[1, 1, 0], name='box')
+                target_object = None
+                object_height = half_size[2]
+            # elif self.object_name == 'capsule': 
+            #     radius=0.02
+            #     half_length=0.02
+            #     manipulated_object = create_capsule(self.scene, radius=radius, half_length=half_length, color=[1, 0, 0])
+            #     target_object = None
+            #     object_height = half_length
+        elif self.object_category.lower() == "ycb":
             manipulated_object = load_ycb_object(self.scene, object_name)
             target_object = load_ycb_object(self.scene, object_name, visual_only=True)
             target_object.set_name("target_object")
@@ -75,16 +91,18 @@ class LabRelocateEnv(BaseSimulationEnv):
         if self.use_visual_obs:
             target_object.hide_visual()
         if self.renderer and not self.no_rgb:
-            set_entity_color([target_object], [0, 1, 0, 0.6])
+            if target_object != None:
+                set_entity_color([target_object], [0, 1, 0, 0.6])
         return manipulated_object, target_object, object_height
 
     def generate_random_object_pose(self, randomness_scale):
         pos = self.np_random.uniform(low=-0.1, high=0.1, size=2) * randomness_scale
-        if self.object_category == "ycb":
+        pos = lab.TABLE_ORIGIN
+        if self.object_category.lower() == "ycb":
             orientation = YCB_ORIENTATION[self.object_name]
         else:
             orientation = np.array([1, 0, 0, 0])
-        position = np.array([pos[0], pos[1], self.object_height])
+        position = np.array([pos[0], pos[1], self.object_height + 0.05])
         pose = sapien.Pose(position, orientation)
         return pose
 
@@ -110,14 +128,26 @@ class LabRelocateEnv(BaseSimulationEnv):
         self.manipulated_object.set_pose(pose)
 
         # Target pose
-        pose = self.generate_random_target_pose(self.randomness_scale)
-        self.target_object.set_pose(pose)
-        self.target_pose = pose
+        if self.target_object != None:
+            pose = self.generate_random_target_pose(self.randomness_scale)
+            self.target_object.set_pose(pose)
+            self.target_pose = pose
 
         if self.object_category == "egad":
             for _ in range(100):
                 self.scene.step()
             self.object_height = self.manipulated_object.get_pose().p[2]
+
+    def load_pan(self, material=None):
+        builder = self.scene.create_actor_builder()
+        density = 1000
+        if material is None:
+            material = self.scene.engine.create_physical_material(1.5, 1, 0.1)
+        builder.add_collision_from_file(filename='./assets/others/pan.fbx', density=density, material=material)
+        builder.add_visual_from_file(filename='./assets/others/pan.fbx')
+        pan = builder.build(name='pan')
+        pan.set_pose(sapien.Pose(p=[lab.TABLE_ORIGIN[0], lab.TABLE_ORIGIN[1], 0.03], q=[0.299, 0.299, 0.641, 0.641]))
+        return pan
 
     def create_lab_tables(self, table_height):
         # Build object table first
@@ -137,50 +167,55 @@ class LabRelocateEnv(BaseSimulationEnv):
             table_visual_material.set_base_color(np.array([0.9, 0.9, 0.9, 1]))
             table_visual_material.set_roughness(0.3)
 
-            leg_size = np.array([0.025, 0.025, (table_height / 2 - table_half_size[2])])
+            leg_half_size = np.array([0.025, 0.025, (table_height / 2 - table_half_size[2])])
             leg_height = -table_height / 2 - table_half_size[2]
             x = table_half_size[0] - 0.1
             y = table_half_size[1] - 0.1
 
             builder.add_box_visual(pose=top_pose, half_size=table_half_size, material=table_visual_material)
-            builder.add_box_visual(pose=sapien.Pose([x, y + lab.TABLE_ORIGIN[1], leg_height]), half_size=leg_size,
+            builder.add_box_visual(pose=sapien.Pose([x, y + lab.TABLE_ORIGIN[1], leg_height]), half_size=leg_half_size,
                                    material=table_visual_material, name="leg0")
-            builder.add_box_visual(pose=sapien.Pose([x, -y + lab.TABLE_ORIGIN[1], leg_height]), half_size=leg_size,
+            builder.add_box_visual(pose=sapien.Pose([x, -y + lab.TABLE_ORIGIN[1], leg_height]), half_size=leg_half_size,
                                    material=table_visual_material, name="leg1")
-            builder.add_box_visual(pose=sapien.Pose([-x, y + lab.TABLE_ORIGIN[1], leg_height]), half_size=leg_size,
+            builder.add_box_visual(pose=sapien.Pose([-x, y + lab.TABLE_ORIGIN[1], leg_height]), half_size=leg_half_size,
                                    material=table_visual_material, name="leg2")
-            builder.add_box_visual(pose=sapien.Pose([-x, -y + lab.TABLE_ORIGIN[1], leg_height]), half_size=leg_size,
+            builder.add_box_visual(pose=sapien.Pose([-x, -y + lab.TABLE_ORIGIN[1], leg_height]), half_size=leg_half_size,
                                    material=table_visual_material, name="leg3")
         object_table = builder.build_static("object_table")
+        return object_table
 
-        # Build robot table
-        table_half_size = np.array([0.3, 0.8, table_thickness / 2])
-        robot_table_offset = -lab.DESK2ROBOT_Z_AXIS - 0.004
-        table_height += robot_table_offset
-        builder = self.scene.create_actor_builder()
-        top_pose = sapien.Pose(
-            np.array([lab.ROBOT2BASE.p[0] - table_half_size[0] + 0.08,
-                      lab.ROBOT2BASE.p[1] - table_half_size[1] + 0.08,
-                      -table_thickness / 2 + robot_table_offset]))
-        top_material = self.scene.create_physical_material(1, 0.5, 0.01)
-        builder.add_box_collision(pose=top_pose, half_size=table_half_size, material=top_material)
-        if self.renderer and not self.no_rgb:
-            table_visual_material = self.renderer.create_material()
-            table_visual_material.set_metallic(0.0)
-            table_visual_material.set_specular(0.5)
-            table_visual_material.set_base_color(np.array([239, 212, 151, 255]) / 255)
-            table_visual_material.set_roughness(0.1)
-            builder.add_box_visual(pose=top_pose, half_size=table_half_size, material=table_visual_material)
-        robot_table = builder.build_static("robot_table")
-        return object_table, robot_table
+        # # Build robot table
+        # table_half_size = np.array([0.3, 0.8, table_thickness / 2])
+        # robot_table_offset = -lab.DESK2ROBOT_Z_AXIS - 0.004
+        # table_height += robot_table_offset
+        # builder = self.scene.create_actor_builder()
+        # top_pose = sapien.Pose(
+        #     np.array([lab.ROBOT2BASE.p[0] - table_half_size[0] + 0.08,
+        #               lab.ROBOT2BASE.p[1] - table_half_size[1] + 0.08,
+        #               -table_thickness / 2 + robot_table_offset]))
+        # top_material = self.scene.create_physical_material(1, 0.5, 0.01)
+        # builder.add_box_collision(pose=top_pose, half_size=table_half_size, material=top_material)
+        # if self.renderer and not self.no_rgb:
+        #     table_visual_material = self.renderer.create_material()
+        #     table_visual_material.set_metallic(0.0)
+        #     table_visual_material.set_specular(0.5)
+        #     table_visual_material.set_base_color(np.array([239, 212, 151, 255]) / 255)
+        #     table_visual_material.set_roughness(0.1)
+        #     builder.add_box_visual(pose=top_pose, half_size=table_half_size, material=table_visual_material)
+        # robot_table = builder.build_static("robot_table")
+        # return object_table, robot_table
 
 
 def env_test():
     from sapien.utils import Viewer
     from constructor import add_default_scene_light
-    env = LabRelocateEnv(object_category="02876657", object_name="9dff3d09b297cdd930612f5c0ef21eb8")
+    # env = LabRelocateEnv(object_category="02876657", object_name="9dff3d09b297cdd930612f5c0ef21eb8")
+    env = LabRelocateEnv(object_category='primitives', object_name='box')
     viewer = Viewer(env.renderer)
     viewer.set_scene(env.scene)
+    viewer.set_camera_xyz(x=-0.5, y=lab.TABLE_ORIGIN[1], z=0.35)
+    viewer.set_camera_rpy(r=0, p=-np.arctan2(2, 2), y=0)
+    viewer.window.set_camera_parameters(near=0.05, far=100, fovy=1)
     add_default_scene_light(env.scene, env.renderer)
     env.viewer = viewer
 

@@ -100,4 +100,4 @@ def add_default_scene_light(scene: sapien.Scene, renderer: sapien.VulkanRenderer
     visual_material.set_metallic(1)
     visual_material.set_specular(0.04)
     if add_ground:
-        scene.add_ground(-1, render_material=visual_material)
+        scene.add_ground(-0.6, render_material=visual_material)
