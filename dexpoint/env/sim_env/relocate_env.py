@@ -47,7 +47,7 @@ class LabRelocateEnv(BaseSimulationEnv):
         if self.object_category.lower() == 'primitives':
             if self.object_name == 'box':
                 half_size = [0.03, 0.03, 0.001]
-                manipulated_object = create_box(self.scene, half_size=half_size, color=[1, 1, 0], name='box')
+                manipulated_object = create_box(self.scene, half_size=half_size, color=[1.0, 1.0, 0.0], name='box')
                 target_object = None
                 object_height = half_size[2]
             # elif self.object_name == 'capsule': 
@@ -143,8 +143,8 @@ class LabRelocateEnv(BaseSimulationEnv):
         density = 1000
         if material is None:
             material = self.scene.engine.create_physical_material(1.5, 1, 0.1)
-        builder.add_collision_from_file(filename='./assets/others/pan.fbx', density=density, material=material)
-        builder.add_visual_from_file(filename='./assets/others/pan.fbx')
+        builder.add_multiple_collisions_from_file(filename='./assets/others/pan_convex.obj', density=density, material=material)
+        builder.add_visual_from_file(filename='./assets/others/pan_convex.obj')
         pan = builder.build(name='pan')
         pan.set_pose(sapien.Pose(p=[lab.TABLE_ORIGIN[0], lab.TABLE_ORIGIN[1], 0.03], q=[0.299, 0.299, 0.641, 0.641]))
         return pan
@@ -182,28 +182,27 @@ class LabRelocateEnv(BaseSimulationEnv):
             builder.add_box_visual(pose=sapien.Pose([-x, -y + lab.TABLE_ORIGIN[1], leg_height]), half_size=leg_half_size,
                                    material=table_visual_material, name="leg3")
         object_table = builder.build_static("object_table")
-        return object_table
 
-        # # Build robot table
-        # table_half_size = np.array([0.3, 0.8, table_thickness / 2])
-        # robot_table_offset = -lab.DESK2ROBOT_Z_AXIS - 0.004
-        # table_height += robot_table_offset
-        # builder = self.scene.create_actor_builder()
-        # top_pose = sapien.Pose(
-        #     np.array([lab.ROBOT2BASE.p[0] - table_half_size[0] + 0.08,
-        #               lab.ROBOT2BASE.p[1] - table_half_size[1] + 0.08,
-        #               -table_thickness / 2 + robot_table_offset]))
-        # top_material = self.scene.create_physical_material(1, 0.5, 0.01)
-        # builder.add_box_collision(pose=top_pose, half_size=table_half_size, material=top_material)
-        # if self.renderer and not self.no_rgb:
-        #     table_visual_material = self.renderer.create_material()
-        #     table_visual_material.set_metallic(0.0)
-        #     table_visual_material.set_specular(0.5)
-        #     table_visual_material.set_base_color(np.array([239, 212, 151, 255]) / 255)
-        #     table_visual_material.set_roughness(0.1)
-        #     builder.add_box_visual(pose=top_pose, half_size=table_half_size, material=table_visual_material)
-        # robot_table = builder.build_static("robot_table")
-        # return object_table, robot_table
+        # Build robot table
+        table_half_size = np.array([0.3, 0.8, table_thickness / 2])
+        robot_table_offset = -lab.DESK2ROBOT_Z_AXIS - 0.004
+        table_height += robot_table_offset
+        builder = self.scene.create_actor_builder()
+        top_pose = sapien.Pose(
+            np.array([lab.ROBOT2BASE.p[0] - table_half_size[0] + 0.08,
+                      lab.ROBOT2BASE.p[1] - table_half_size[1] + 0.08,
+                      -table_thickness / 2 + robot_table_offset]))
+        top_material = self.scene.create_physical_material(1, 0.5, 0.01)
+        builder.add_box_collision(pose=top_pose, half_size=table_half_size, material=top_material)
+        if self.renderer and not self.no_rgb:
+            table_visual_material = self.renderer.create_material()
+            table_visual_material.set_metallic(0.0)
+            table_visual_material.set_specular(0.5)
+            table_visual_material.set_base_color(np.array([239, 212, 151, 255]) / 255)
+            table_visual_material.set_roughness(0.1)
+            builder.add_box_visual(pose=top_pose, half_size=table_half_size, material=table_visual_material)
+        robot_table = builder.build_static("robot_table")
+        return object_table, robot_table
 
 
 def env_test():

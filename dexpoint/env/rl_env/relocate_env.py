@@ -160,7 +160,7 @@ class AllegroRelocateRLEnv(LabRelocateEnv, BaseRLEnv):
 def main_env():
     from time import time
     env = AllegroRelocateRLEnv(use_gui=True, robot_name="allegro_hand_xarm6_wrist_mounted_face_front",
-                               object_name="any_train", object_category="02876657", frame_skip=10,
+                               object_name="box", object_category="primitives", frame_skip=10,
                                use_visual_obs=False)
     base_env = env
     robot_dof = env.robot.dof
